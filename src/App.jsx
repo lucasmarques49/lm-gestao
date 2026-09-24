@@ -1,4 +1,48 @@
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Plus, Trash2, Home, History, Users, Save, Camera, Video, Lock, Wrench, Calendar,
+} from "lucide-react";
+import * as db from "./db";
+import PainelOperacional from "./PainelOperacional";
+
+const LOGO_SRC = "SUBSTITUA_PELO_MESMO_LOGO_SRC_DO_APP_ORIGINAL";
+
+const COLORS = {
+  ink: "#16302E",
+  teal: "#1F4B4A",
+  tealLight: "#2E6B69",
+  sand: "#EEF2ED",
+  card: "#FFFFFF",
+  border: "#D8DED6",
+  rust: "#B4472C",
+  rustBg: "#FBEAE5",
+  moss: "#4C7A57",
+  mossBg: "#E7F1E9",
+  amber: "#A87418",
+  amberBg: "#FBF1DE",
+  muted: "#6B776F",
+};
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const ADMIN_PIN = import.meta.env.VITE_ADMIN_PIN || "1508";
+
+const DEFAULT_LINEN = [
+  { label: "Lençol casal", expected: 2 },
+  { label: "Lençol solteiro", expected: 2 },
+  { label: "Fronha", expected: 4 },
+  { label: "Edredom / cobre-leito", expected: 2 },
+  { label: "Travesseiro", expected: 4 },
+  { label: "Toalha de banho", expected: 4 },
+  { label: "Toalha de rosto", expected: 4 },
+  { label: "Toalha de piso", expected: 2 },
+];
+const DEFAULT_ROOMS = [
+  { name: "Sala", items: ["TV e controle remoto", "Sofá / estofados", "Tapete", "Ar-condicionado"] },
+  { name: "Cozinha", items: ["Fogão / cooktop", "Geladeira", "Micro-ondas", "Utensílios completos"] },
+  { name: "Quarto 1", items: ["Ar-condicionado", "Armário", "Iluminação"] },
+  { name: "Banheiro", items: ["Chuveiro / aquecedor", "Descarga", "Ralo sem entupimento"] },
+];
+
 export default function App() {
   const [tab, setTab] = useState("painel");
   const [unlocked, setUnlocked] = useState(false);
