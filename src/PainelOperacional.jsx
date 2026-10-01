@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Calendar, FileCheck, FileX, Sparkles, Wrench } from "lucide-react";
+import { Calendar, FileCheck, FileX, Sparkles, Wrench, Pencil, Check, X } from "lucide-react";
 import * as db from "./db";
 
 // Reaproveita as mesmas cores do App.jsx — mantenha em sync se elas mudarem lá
@@ -53,6 +53,11 @@ function fmtDate(d) {
   const date = new Date(d + "T00:00:00");
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
+function fmtDateLong(d) {
+  if (!d) return "—";
+  const date = new Date(d + "T00:00:00");
+  return date.toLocaleDateString("pt-BR");
+}
 
 function diasAte(d) {
   if (!d) return null;
@@ -65,24 +70,29 @@ function diasAte(d) {
 /**
  * PainelOperacional
  * props:
- *  - properties: array já carregado em App.jsx (mesmo formato usado em ImoveisTab)
- *  - sessions: array de checklists já carregado em App.jsx (para achar a última limpeza)
- *  - maintenance: array de manutenção já carregado em App.jsx
- *  - reservas: array de reservas (vem do db.fetchReservas())
- *  - onToggleDocumento: função async (reservaId, novoValor) => void
- *  - onAddReserva: função async (dadosReserva) => void
+ *  - properties, sessions, maintenance, reservas: arrays já carregados em App.jsx
+ *  - limpezaManual: array de overrides manuais (vem do db.fetchLimpezaManual())
+ *  - onToggleDocumento: (reservaId, novoValor) => void
+ *  - onAddReserva: (dadosReserva) => void
+ *  - onSaveLimpezaManual: (imovelId, data) => void
  *  - saving: bool
  */
-export default function PainelOperacional({ properties, sessions, maintenance, reservas, onToggleDocumento, onAddReserva, saving }) {
+export default function PainelOperacional({ properties, sessions, maintenance, reservas, limpezaManual = [], onToggleDocumento, onAddReserva, onSaveLimpezaManual, saving }) {
   const [showForm, setShowForm] = useState(false);
 
-  // última limpeza por imóvel (sessions já vem ordenado do banco, mas garantimos aqui)
+  // última limpeza automática (via checklist) por imóvel
   const ultimaLimpezaPorImovel = {};
   sessions.forEach((s) => {
     const atual = ultimaLimpezaPorImovel[s.propertyName];
     if (!atual || new Date(s.startedAt) > new Date(atual.startedAt)) {
       ultimaLimpezaPorImovel[s.propertyName] = s;
     }
+  });
+
+  // limpeza manual (fallback) por imóvel, indexado por id
+  const limpezaManualPorImovel = {};
+  limpezaManual.forEach((l) => {
+    limpezaManualPorImovel[l.imovelId] = l;
   });
 
   // manutenção aberta por imóvel
@@ -130,7 +140,8 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
 
       {properties.map((p) => {
         const reserva = proximaReservaPorImovel[p.name];
-        const ultimaLimpeza = ultimaLimpezaPorImovel[p.name];
+        const limpezaAuto = ultimaLimpezaPorImovel[p.name];
+        const limpezaManualDoImovel = limpezaManualPorImovel[p.id];
         const manutencaoAberta = manutencaoAbertaPorImovel[p.name] || 0;
         const dias = reserva ? diasAte(reserva.checkin) : null;
 
@@ -174,18 +185,23 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
               </div>
             )}
 
-            {/* Última limpeza */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
-              <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                <Sparkles size={14} /> Última limpeza
-              </div>
-              {ultimaLimpeza ? (
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{new Date(ultimaLimpeza.startedAt).toLocaleDateString("pt-BR")}</div>
-                  <div style={{ fontSize: 11, color: COLORS.muted }}>{ultimaLimpeza.staffName}</div>
+            {/* Última limpeza (automática, ou manual como fallback) */}
+            <div style={{ padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
+              {limpezaAuto ? (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Sparkles size={14} /> Última limpeza
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{new Date(limpezaAuto.startedAt).toLocaleDateString("pt-BR")}</div>
+                    <div style={{ fontSize: 11, color: COLORS.muted }}>{limpezaAuto.staffName}</div>
+                  </div>
                 </div>
               ) : (
-                <span style={{ fontSize: 12, color: COLORS.muted }}>Sem registro</span>
+                <LimpezaManualField
+                  valor={limpezaManualDoImovel?.data}
+                  onSalvar={(data) => onSaveLimpezaManual(p.id, data)}
+                />
               )}
             </div>
 
@@ -201,6 +217,64 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Campo clicável: mostra a data manual (se existir) ou "Sem registro",
+// e abre um input de data inline para editar.
+function LimpezaManualField({ valor, onSalvar }) {
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState(valor || "");
+
+  if (editando) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+          <Sparkles size={14} /> Última limpeza
+        </div>
+        <input
+          type="date"
+          value={rascunho}
+          onChange={(e) => setRascunho(e.target.value)}
+          style={{ ...inputStyle, width: 140, padding: "5px 8px", fontSize: 12 }}
+          autoFocus
+        />
+        <button
+          onClick={() => { if (rascunho) { onSalvar(rascunho); setEditando(false); } }}
+          style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.moss, padding: 2 }}
+        >
+          <Check size={16} />
+        </button>
+        <button
+          onClick={() => { setRascunho(valor || ""); setEditando(false); }}
+          style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.rust, padding: 2 }}
+        >
+          <X size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
+        <Sparkles size={14} /> Última limpeza
+      </div>
+      <button
+        onClick={() => setEditando(true)}
+        style={{ border: "none", background: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6 }}
+      >
+        {valor ? (
+          <>
+            <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.ink }}>{fmtDateLong(valor)}</span>
+            <Pill tone="amber">manual</Pill>
+            <Pencil size={12} color={COLORS.muted} />
+          </>
+        ) : (
+          <span style={{ fontSize: 12, color: COLORS.tealLight, textDecoration: "underline" }}>Sem registro — clique para preencher</span>
+        )}
+      </button>
     </div>
   );
 }
