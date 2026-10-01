@@ -51,6 +51,7 @@ export default function App() {
   const [sessions, setSessions] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
   const [reservas, setReservas] = useState([]);
+  const [limpezaManual, setLimpezaManual] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [editingProperty, setEditingProperty] = useState(null);
@@ -59,18 +60,20 @@ export default function App() {
 
   const reloadAll = useCallback(async () => {
     try {
-      const [props, stf, sess, maint, resv] = await Promise.all([
-        db.fetchProperties(),
-        db.fetchStaff(),
-        db.fetchSessions(),
-        db.fetchMaintenance(),
-        db.fetchReservas(),
-      ]);
+      const [props, stf, sess, maint, resv, limp] = await Promise.all([
+  db.fetchProperties(),
+  db.fetchStaff(),
+  db.fetchSessions(),
+  db.fetchMaintenance(),
+  db.fetchReservas(),
+  db.fetchLimpezaManual(),
+]);
       setProperties(props);
       setStaff(stf);
       setSessions(sess);
       setMaintenance(maint);
       setReservas(resv);
+      setLimpezaManual(limp);
       setLoadError("");
     } catch (err) {
       setLoadError("Não foi possível conectar ao banco de dados. Confira as variáveis VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.");
@@ -166,6 +169,14 @@ export default function App() {
       await reloadAll();
     } catch (err) {
       alert("Erro ao atualizar documento: " + err.message);
+    }
+    
+  const saveLimpezaManual = async (imovelId, data) => {
+    try {
+      await db.saveLimpezaManual(imovelId, data);
+      await reloadAll();
+    } catch (err) {
+      alert("Erro ao salvar limpeza manual: " + err.message);
     }
   };
 
