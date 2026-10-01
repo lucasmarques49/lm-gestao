@@ -309,3 +309,20 @@ export async function setDocumentoEnviado(id, valor) {
     .eq("id", id);
   if (error) throw error;
 }
+export async function fetchLimpezaManual() {
+  const { data, error } = await supabase.from("limpeza_manual_overrides").select("*");
+  if (error) throw error;
+  return data.map((r) => ({
+    imovelId: r.imovel_id,
+    data: r.data,
+    atualizadoEm: r.atualizado_em,
+  }));
+}
+ 
+export async function saveLimpezaManual(imovelId, data) {
+  const { error } = await supabase
+    .from("limpeza_manual_overrides")
+    .upsert({ imovel_id: imovelId, data, atualizado_em: new Date().toISOString() });
+  if (error) throw error;
+}
+ 
