@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Calendar, FileCheck, FileX, Sparkles, Wrench, Pencil, Check, X } from "lucide-react";
 import * as db from "./db";
 
-// Reaproveita as mesmas cores do App.jsx — mantenha em sync se elas mudarem lá
 const COLORS = {
   ink: "#16302E",
   teal: "#1F4B4A",
@@ -58,7 +57,6 @@ function fmtDateLong(d) {
   const date = new Date(d + "T00:00:00");
   return date.toLocaleDateString("pt-BR");
 }
-
 function diasAte(d) {
   if (!d) return null;
   const hoje = new Date();
@@ -67,20 +65,9 @@ function diasAte(d) {
   return Math.round((alvo - hoje) / 86400000);
 }
 
-/**
- * PainelOperacional
- * props:
- *  - properties, sessions, maintenance, reservas: arrays já carregados em App.jsx
- *  - limpezaManual: array de overrides manuais (vem do db.fetchLimpezaManual())
- *  - onToggleDocumento: (reservaId, novoValor) => void
- *  - onAddReserva: (dadosReserva) => void
- *  - onSaveLimpezaManual: (imovelId, data) => void
- *  - saving: bool
- */
 export default function PainelOperacional({ properties, sessions, maintenance, reservas, limpezaManual = [], onToggleDocumento, onAddReserva, onSaveLimpezaManual, saving }) {
   const [showForm, setShowForm] = useState(false);
 
-  // última limpeza automática (via checklist) por imóvel
   const ultimaLimpezaPorImovel = {};
   sessions.forEach((s) => {
     const atual = ultimaLimpezaPorImovel[s.propertyName];
@@ -89,13 +76,9 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
     }
   });
 
-  // limpeza manual (fallback) por imóvel, indexado por id
   const limpezaManualPorImovel = {};
-  limpezaManual.forEach((l) => {
-    limpezaManualPorImovel[l.imovelId] = l;
-  });
+  limpezaManual.forEach((l) => { limpezaManualPorImovel[l.imovelId] = l; });
 
-  // manutenção aberta por imóvel
   const manutencaoAbertaPorImovel = {};
   maintenance.forEach((m) => {
     if (m.status === "aberto") {
@@ -103,17 +86,28 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
     }
   });
 
-  // próxima reserva futura por imóvel
+  // até 2 próximas reservas por imóvel, ordenadas por checkin
   const hoje = new Date().toISOString().slice(0, 10);
-  const proximaReservaPorImovel = {};
+  const proximasReservasPorImovel = {};
   reservas
     .filter((r) => r.checkout >= hoje)
     .sort((a, b) => a.checkin.localeCompare(b.checkin))
     .forEach((r) => {
-      if (!proximaReservaPorImovel[r.residencia_nome]) {
-        proximaReservaPorImovel[r.residencia_nome] = r;
+      if (!proximasReservasPorImovel[r.residencia_nome]) proximasReservasPorImovel[r.residencia_nome] = [];
+      if (proximasReservasPorImovel[r.residencia_nome].length < 2) {
+        proximasReservasPorImovel[r.residencia_nome].push(r);
       }
     });
+
+  // ordena imóveis: quem tem reserva mais próxima vem primeiro; sem reserva, por último
+  const propertiesOrdenadas = [...properties].sort((a, b) => {
+    const ra = proximasReservasPorImovel[a.name]?.[0];
+    const rb = proximasReservasPorImovel[b.name]?.[0];
+    if (ra && !rb) return -1;
+    if (!ra && rb) return 1;
+    if (ra && rb) return ra.checkin.localeCompare(rb.checkin);
+    return 0;
+  });
 
   if (showForm) {
     return (
@@ -128,7 +122,7 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
 
   return (
     <div style={{ paddingTop: 16 }}>
-      <button onClick={() => setShowForm(true)} style={primaryBtnStyle}>
+      <button onClick={() => setShowForm(true)} style={{ ...primaryBtnStyle, maxWidth: 260 }}>
         <Calendar size={16} /> Nova reserva
       </button>
 
@@ -138,91 +132,103 @@ export default function PainelOperacional({ properties, sessions, maintenance, r
         </div>
       )}
 
-      {properties.map((p) => {
-        const reserva = proximaReservaPorImovel[p.name];
-        const limpezaAuto = ultimaLimpezaPorImovel[p.name];
-        const limpezaManualDoImovel = limpezaManualPorImovel[p.id];
-        const manutencaoAberta = manutencaoAbertaPorImovel[p.name] || 0;
-        const dias = reserva ? diasAte(reserva.checkin) : null;
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+        gap: 14,
+        marginTop: 16,
+      }}>
+        {propertiesOrdenadas.map((p) => {
+          const proximas = proximasReservasPorImovel[p.name] || [];
+          const limpezaAuto = ultimaLimpezaPorImovel[p.name];
+          const limpezaManualDoImovel = limpezaManualPorImovel[p.id];
+          const manutencaoAberta = manutencaoAbertaPorImovel[p.name] || 0;
 
-        return (
-          <div key={p.id} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14, marginTop: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{p.name}</div>
+          return (
+            <div key={p.id} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{p.name}</div>
 
-            {/* Reserva */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
-              <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                <Calendar size={14} /> Próxima reserva
-              </div>
-              {reserva ? (
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>
-                    {fmtDate(reserva.checkin)} → {fmtDate(reserva.checkout)}
+              {/* Reservas (até 2) */}
+              {proximas.length === 0 ? (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
+                  <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Calendar size={14} /> Próxima reserva
                   </div>
-                  <div style={{ fontSize: 11, color: COLORS.muted }}>
-                    {reserva.hospede_nome || "—"} {dias !== null && dias >= 0 ? `· em ${dias}d` : ""}
-                  </div>
+                  <span style={{ fontSize: 12, color: COLORS.muted }}>Nenhuma agendada</span>
                 </div>
               ) : (
-                <span style={{ fontSize: 12, color: COLORS.muted }}>Nenhuma agendada</span>
+                proximas.map((reserva, idx) => {
+                  const dias = diasAte(reserva.checkin);
+                  return (
+                    <div key={reserva.id} style={{ padding: "6px 0", borderTop: idx > 0 ? `1px solid ${COLORS.border}` : "none" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
+                          <Calendar size={14} /> {idx === 0 ? "Próxima reserva" : "Reserva seguinte"}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>
+                            {fmtDate(reserva.checkin)} → {fmtDate(reserva.checkout)}
+                          </div>
+                          <div style={{ fontSize: 11, color: COLORS.muted }}>
+                            {reserva.hospede_nome || "—"} {dias !== null && dias >= 0 ? `· em ${dias}d` : ""}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
+                          {reserva.documento_enviado ? <FileCheck size={13} /> : <FileX size={13} />} Documento
+                        </div>
+                        <button
+                          onClick={() => onToggleDocumento(reserva.id, !reserva.documento_enviado)}
+                          style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}
+                        >
+                          <Pill tone={reserva.documento_enviado ? "moss" : "amber"}>
+                            {reserva.documento_enviado ? "Enviado" : "Pendente"}
+                          </Pill>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
               )}
-            </div>
 
-            {/* Documento */}
-            {reserva && (
+              {/* Última limpeza (automática, ou manual como fallback) */}
+              <div style={{ padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
+                {limpezaAuto ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Sparkles size={14} /> Última limpeza
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{new Date(limpezaAuto.startedAt).toLocaleDateString("pt-BR")}</div>
+                      <div style={{ fontSize: 11, color: COLORS.muted }}>{limpezaAuto.staffName}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <LimpezaManualField
+                    valor={limpezaManualDoImovel?.data}
+                    onSalvar={(data) => onSaveLimpezaManual(p.id, data)}
+                  />
+                )}
+              </div>
+
+              {/* Manutenção */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
                 <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                  {reserva.documento_enviado ? <FileCheck size={14} /> : <FileX size={14} />} Documento
+                  <Wrench size={14} /> Manutenção
                 </div>
-                <button
-                  onClick={() => onToggleDocumento(reserva.id, !reserva.documento_enviado)}
-                  style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}
-                >
-                  <Pill tone={reserva.documento_enviado ? "moss" : "amber"}>
-                    {reserva.documento_enviado ? "Enviado" : "Pendente"}
-                  </Pill>
-                </button>
+                <Pill tone={manutencaoAberta > 0 ? "rust" : "moss"}>
+                  {manutencaoAberta > 0 ? `${manutencaoAberta} aberta(s)` : "OK"}
+                </Pill>
               </div>
-            )}
-
-            {/* Última limpeza (automática, ou manual como fallback) */}
-            <div style={{ padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
-              {limpezaAuto ? (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                    <Sparkles size={14} /> Última limpeza
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{new Date(limpezaAuto.startedAt).toLocaleDateString("pt-BR")}</div>
-                    <div style={{ fontSize: 11, color: COLORS.muted }}>{limpezaAuto.staffName}</div>
-                  </div>
-                </div>
-              ) : (
-                <LimpezaManualField
-                  valor={limpezaManualDoImovel?.data}
-                  onSalvar={(data) => onSaveLimpezaManual(p.id, data)}
-                />
-              )}
             </div>
-
-            {/* Manutenção */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: `1px solid ${COLORS.border}` }}>
-              <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
-                <Wrench size={14} /> Manutenção
-              </div>
-              <Pill tone={manutencaoAberta > 0 ? "rust" : "moss"}>
-                {manutencaoAberta > 0 ? `${manutencaoAberta} aberta(s)` : "OK"}
-              </Pill>
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// Campo clicável: mostra a data manual (se existir) ou "Sem registro",
-// e abre um input de data inline para editar.
 function LimpezaManualField({ valor, onSalvar }) {
   const [editando, setEditando] = useState(false);
   const [rascunho, setRascunho] = useState(valor || "");
@@ -240,16 +246,10 @@ function LimpezaManualField({ valor, onSalvar }) {
           style={{ ...inputStyle, width: 140, padding: "5px 8px", fontSize: 12 }}
           autoFocus
         />
-        <button
-          onClick={() => { if (rascunho) { onSalvar(rascunho); setEditando(false); } }}
-          style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.moss, padding: 2 }}
-        >
+        <button onClick={() => { if (rascunho) { onSalvar(rascunho); setEditando(false); } }} style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.moss, padding: 2 }}>
           <Check size={16} />
         </button>
-        <button
-          onClick={() => { setRascunho(valor || ""); setEditando(false); }}
-          style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.rust, padding: 2 }}
-        >
+        <button onClick={() => { setRascunho(valor || ""); setEditando(false); }} style={{ border: "none", background: "none", cursor: "pointer", color: COLORS.rust, padding: 2 }}>
           <X size={16} />
         </button>
       </div>
@@ -261,10 +261,7 @@ function LimpezaManualField({ valor, onSalvar }) {
       <div style={{ fontSize: 13, color: COLORS.muted, display: "flex", alignItems: "center", gap: 6 }}>
         <Sparkles size={14} /> Última limpeza
       </div>
-      <button
-        onClick={() => setEditando(true)}
-        style={{ border: "none", background: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6 }}
-      >
+      <button onClick={() => setEditando(true)} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6 }}>
         {valor ? (
           <>
             <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.ink }}>{fmtDateLong(valor)}</span>
@@ -285,30 +282,25 @@ function ReservaForm({ properties, onCancel, onSave, saving }) {
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
   const [plataforma, setPlataforma] = useState("Airbnb");
-
   const canSave = propertyName && checkin && checkout;
 
   return (
-    <div style={{ paddingTop: 16 }}>
+    <div style={{ paddingTop: 16, maxWidth: 400 }}>
       <button onClick={onCancel} style={{ background: "none", border: "none", color: COLORS.muted, fontSize: 13, padding: 0, marginBottom: 10, cursor: "pointer" }}>
         ← Cancelar
       </button>
-
       <SectionLabel>Imóvel</SectionLabel>
       <select value={propertyName} onChange={(e) => setPropertyName(e.target.value)} style={selectStyle}>
         <option value="">Selecione o imóvel</option>
         {properties.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
       </select>
-
       <SectionLabel style={{ marginTop: 16 }}>Hóspede</SectionLabel>
       <input placeholder="Nome do hóspede" value={hospede} onChange={(e) => setHospede(e.target.value)} style={inputStyle} />
-
       <SectionLabel style={{ marginTop: 16 }}>Datas</SectionLabel>
       <div style={{ display: "flex", gap: 8 }}>
         <input type="date" value={checkin} onChange={(e) => setCheckin(e.target.value)} style={inputStyle} />
         <input type="date" value={checkout} onChange={(e) => setCheckout(e.target.value)} style={inputStyle} />
       </div>
-
       <SectionLabel style={{ marginTop: 16 }}>Plataforma</SectionLabel>
       <select value={plataforma} onChange={(e) => setPlataforma(e.target.value)} style={selectStyle}>
         <option>Airbnb</option>
@@ -316,12 +308,7 @@ function ReservaForm({ properties, onCancel, onSave, saving }) {
         <option>Direto</option>
         <option>Outra</option>
       </select>
-
-      <button
-        onClick={() => onSave({ residencia_nome: propertyName, hospede_nome: hospede, checkin, checkout, plataforma })}
-        disabled={!canSave || saving}
-        style={{ ...primaryBtnStyle, marginTop: 24, opacity: canSave && !saving ? 1 : 0.5 }}
-      >
+      <button onClick={() => onSave({ residencia_nome: propertyName, hospede_nome: hospede, checkin, checkout, plataforma })} disabled={!canSave || saving} style={{ ...primaryBtnStyle, marginTop: 24, opacity: canSave && !saving ? 1 : 0.5 }}>
         {saving ? "Salvando..." : "Salvar reserva"}
       </button>
     </div>
