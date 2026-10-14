@@ -326,3 +326,46 @@ export async function saveLimpezaManual(imovelId, data) {
     .upsert({ imovel_id: imovelId, data, atualizado_em: new Date().toISOString() });
   if (error) throw error;
 }
+
+/* ---------------- RELATÓRIOS ENVIADOS ---------------- */
+
+// Não lança erro: se a tabela ainda não existir (migration não rodada), o app continua funcionando.
+export async function fetchRelatoriosEnviados() {
+  try {
+    const desde = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from("relatorios_enviados")
+      .select("*")
+      .gte("data_envio", desde);
+    if (error) throw error;
+    return data.map((r) => ({
+      residencia_nome: r.residencia_nome,
+      tipo: r.tipo,
+      data_envio: r.data_envio,
+      enviado_em: r.enviado_em,
+    }));
+  } catch (err) {
+    console.error("relatorios_enviados:", err);
+    return [];
+  }
+}
+
+export async function setRelatorioEnviado(residenciaNome, tipo, dataEnvio, enviado) {
+  if (enviado) {
+    const { error } = await supabase
+      .from("relatorios_enviados")
+      .upsert(
+        { residencia_nome: residenciaNome, tipo, data_envio: dataEnvio, enviado_em: new Date().toISOString() },
+        { onConflict: "residencia_nome,tipo,data_envio" }
+      );
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("relatorios_enviados")
+      .delete()
+      .eq("residencia_nome", residenciaNome)
+      .eq("tipo", tipo)
+      .eq("data_envio", dataEnvio);
+    if (error) throw error;
+  }
+}
