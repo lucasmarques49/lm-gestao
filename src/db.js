@@ -283,6 +283,7 @@ export async function fetchReservas() {
     checkin: r.checkin,
     checkout: r.checkout,
     plataforma: r.plataforma || "",
+    valor_dono: r.valor_dono === null || r.valor_dono === undefined ? null : Number(r.valor_dono),
     status_reserva: r.status_reserva,
     documento_enviado: r.documento_enviado,
     origem: r.origem,
