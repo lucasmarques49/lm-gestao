@@ -53,6 +53,7 @@ export default function App() {
   const [maintenance, setMaintenance] = useState([]);
   const [reservas, setReservas] = useState([]);
   const [limpezaManual, setLimpezaManual] = useState([]);
+  const [relatoriosEnviados, setRelatoriosEnviados] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [editingProperty, setEditingProperty] = useState(null);
@@ -61,13 +62,14 @@ export default function App() {
 
   const reloadAll = useCallback(async () => {
     try {
-      const [props, stf, sess, maint, resv, limp] = await Promise.all([
+      const [props, stf, sess, maint, resv, limp, relEnv] = await Promise.all([
         db.fetchProperties(),
         db.fetchStaff(),
         db.fetchSessions(),
         db.fetchMaintenance(),
         db.fetchReservas(),
         db.fetchLimpezaManual(),
+        db.fetchRelatoriosEnviados(),
       ]);
       setProperties(props);
       setStaff(stf);
@@ -75,6 +77,7 @@ export default function App() {
       setMaintenance(maint);
       setReservas(resv);
       setLimpezaManual(limp);
+      setRelatoriosEnviados(relEnv);
       setLoadError("");
     } catch (err) {
       setLoadError("Não foi possível conectar ao banco de dados. Confira as variáveis VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY.");
@@ -180,6 +183,14 @@ export default function App() {
       alert("Erro ao salvar limpeza manual: " + err.message);
     }
   };
+  const toggleRelatorioEnviado = async (residenciaNome, tipo, dataEnvio, enviado) => {
+    try {
+      await db.setRelatorioEnviado(residenciaNome, tipo, dataEnvio, enviado);
+      setRelatoriosEnviados(await db.fetchRelatoriosEnviados());
+    } catch (err) {
+      alert("Erro ao marcar relatório como enviado. Confira se a migration relatorios_enviados foi rodada no Supabase. " + err.message);
+    }
+  };
 
   if (!unlocked) {
     return <PinGate onUnlock={() => setUnlocked(true)} />;
@@ -220,7 +231,12 @@ export default function App() {
               saving={saving}
             />
           ) : tab === "relatorio" ? (
-            <RelatorioProprietarios properties={properties} reservas={reservas} />
+            <RelatorioProprietarios
+              properties={properties}
+              reservas={reservas}
+              enviados={relatoriosEnviados}
+              onToggleEnviado={toggleRelatorioEnviado}
+            />
           ) : tab === "imoveis" ? (
             <ImoveisTab
               properties={properties}
